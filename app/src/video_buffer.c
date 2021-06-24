@@ -7,7 +7,9 @@
 #include "util/log.h"
 
 bool
-video_buffer_init(struct video_buffer *vb) {
+video_buffer_init(struct video_buffer *vb,
+                  const struct video_buffer_callbacks *cbs,
+                  void *cbs_userdata) {
     vb->pending_frame = av_frame_alloc();
     if (!vb->pending_frame) {
         return false;
@@ -29,6 +31,12 @@ video_buffer_init(struct video_buffer *vb) {
     // there is initially no frame, so consider it has already been consumed
     vb->pending_frame_consumed = true;
 
+    assert(cbs);
+    assert(cbs->on_new_frame);
+
+    vb->cbs = cbs;
+    vb->cbs_userdata = cbs_userdata;
+
     return true;
 }
 
@@ -47,8 +55,7 @@ swap_frames(AVFrame **lhs, AVFrame **rhs) {
 }
 
 bool
-video_buffer_push(struct video_buffer *vb, const AVFrame *frame,
-                  bool *previous_frame_skipped) {
+video_buffer_push(struct video_buffer *vb, const AVFrame *frame) {
     sc_mutex_lock(&vb->mutex);
 
     // Use a temporary frame to preserve pending_frame in case of error.
@@ -64,12 +71,12 @@ video_buffer_push(struct video_buffer *vb, const AVFrame *frame,
     swap_frames(&vb->pending_frame, &vb->tmp_frame);
     av_frame_unref(vb->tmp_frame);
 
-    if (previous_frame_skipped) {
-        *previous_frame_skipped = !vb->pending_frame_consumed;
-    }
+    bool previous_skipped = !vb->pending_frame_consumed;
     vb->pending_frame_consumed = false;
 
     sc_mutex_unlock(&vb->mutex);
+
+    vb->cbs->on_new_frame(vb, previous_skipped, vb->cbs_userdata);
 
     return true;
 }

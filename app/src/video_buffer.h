@@ -33,16 +33,25 @@ struct video_buffer {
     sc_mutex mutex;
 
     bool pending_frame_consumed;
+
+    const struct video_buffer_callbacks *cbs;
+    void *cbs_userdata;
+};
+
+struct video_buffer_callbacks {
+    void (*on_new_frame)(struct video_buffer *vb, bool previous_skipped,
+                         void *userdata);
 };
 
 bool
-video_buffer_init(struct video_buffer *vb);
+video_buffer_init(struct video_buffer *vb,
+                  const struct video_buffer_callbacks *cbs, void *cbs_userdata);
 
 void
 video_buffer_destroy(struct video_buffer *vb);
 
 bool
-video_buffer_push(struct video_buffer *vb, const AVFrame *frame, bool *skipped);
+video_buffer_push(struct video_buffer *vb, const AVFrame *frame);
 
 void
 video_buffer_consume(struct video_buffer *vb, AVFrame *dst);

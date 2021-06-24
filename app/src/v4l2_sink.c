@@ -137,9 +137,25 @@ run_v4l2_sink(void *data) {
     return 0;
 }
 
+static void
+video_buffer_on_new_frame(struct video_buffer *vb, bool previous_skipped,
+                          void *userdata) {
+    (void) vb;
+    struct sc_v4l2_sink *vs = userdata;
+
+    if (!previous_skipped) {
+        // signal change of vs->vb.pending_frame_consumed
+        sc_cond_signal(&vs->cond);
+    }
+}
+
 static bool
 sc_v4l2_sink_open(struct sc_v4l2_sink *vs) {
-    bool ok = video_buffer_init(&vs->vb);
+    static const struct video_buffer_callbacks cbs = {
+        .on_new_frame = video_buffer_on_new_frame,
+    };
+
+    bool ok = video_buffer_init(&vs->vb, &cbs, vs);
     if (!ok) {
         return false;
     }
@@ -299,15 +315,7 @@ sc_v4l2_sink_close(struct sc_v4l2_sink *vs) {
 
 static bool
 sc_v4l2_sink_push(struct sc_v4l2_sink *vs, const AVFrame *frame) {
-    bool ok = video_buffer_push(&vs->vb, frame, NULL);
-    if (!ok) {
-        return false;
-    }
-
-    // signal possible change of vs->vb.pending_frame_consumed
-    sc_cond_signal(&vs->cond);
-
-    return true;
+    return video_buffer_push(&vs->vb, frame);
 }
 
 static bool
